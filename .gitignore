@@ -16,3 +16,6 @@ venv/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Source PDFs (not ours to redistribute; README lists what to download)
+data/pdfs/*.pdf
