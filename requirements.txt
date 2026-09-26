@@ -5,5 +5,10 @@ pydantic-settings>=2.15,<3
 # Ingestion
 pymupdf>=1.28,<2
 
+# Embeddings + vector search
+sentence-transformers>=6.1,<7
+faiss-cpu>=1.15,<2
+numpy>=2.5,<3
+
 # Testing
 pytest>=9.1,<10
