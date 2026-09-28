@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.2"
+    llm_timeout_seconds: float = 60.0
 
     # --- Embeddings ---
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
