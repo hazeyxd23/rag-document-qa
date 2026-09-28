@@ -122,10 +122,14 @@ def chunk_pdf(pdf_path: Path, chunk_size: int, chunk_overlap: int) -> list[Chunk
 
 
 def load_pdfs(pdf_dir: Path, chunk_size: int, chunk_overlap: int) -> list[Chunk]:
-    """Chunk every PDF in a directory, in filename order."""
+    """Chunk every PDF in a directory, in filename order. Corrupt files are skipped and logged."""
     chunks = []
     for pdf_path in sorted(pdf_dir.glob("*.pdf")):
-        doc_chunks = chunk_pdf(pdf_path, chunk_size, chunk_overlap)
+        try:
+            doc_chunks = chunk_pdf(pdf_path, chunk_size, chunk_overlap)
+        except pymupdf.FileDataError as e:  # also covers empty files
+            logger.error("Skipping %s: not a readable PDF (%s)", pdf_path.name, e)
+            continue
         logger.info("%s: %d chunks", pdf_path.name, len(doc_chunks))
         chunks.extend(doc_chunks)
     return chunks
