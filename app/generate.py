@@ -96,9 +96,10 @@ class OpenAIProvider:
 class OllamaProvider:
     """Calls a local Ollama server's native /api/chat endpoint over plain HTTP."""
 
-    def __init__(self, base_url: str, model: str, timeout: float,
+    def __init__(self, base_url: str, model: str, timeout: float, think: bool = False,
                  transport: httpx.BaseTransport | None = None):
         self.model = model
+        self.think = think
         self.client = httpx.Client(base_url=base_url, timeout=timeout, transport=transport)
 
     def generate(self, system: str, user: str) -> Generation:
@@ -106,6 +107,7 @@ class OllamaProvider:
             "model": self.model,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "stream": False,  # one JSON response instead of a stream of tokens
+            "think": self.think,  # thinking models otherwise reason at length before answering
             "options": {"temperature": 0},
         }
         try:
@@ -137,7 +139,8 @@ def make_provider(settings: Settings) -> LLMProvider:
         if not key:
             raise ValueError("LLM_PROVIDER=openai but OPENAI_API_KEY is not set in .env")
         return OpenAIProvider(key, settings.openai_model, settings.llm_timeout_seconds)
-    return OllamaProvider(settings.ollama_base_url, settings.ollama_model, settings.llm_timeout_seconds)
+    return OllamaProvider(settings.ollama_base_url, settings.ollama_model, settings.llm_timeout_seconds,
+                          think=settings.ollama_think)
 
 
 def build_prompt(question: str, results: list[SearchResult]) -> tuple[str, str]:

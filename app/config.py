@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.2"
+    # Thinking models (e.g. Qwen) reason before answering; on CPU that is ~40x slower.
+    ollama_think: bool = False
     llm_timeout_seconds: float = 60.0
 
     # --- Embeddings ---

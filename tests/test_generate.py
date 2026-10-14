@@ -124,6 +124,7 @@ def test_ollama_provider_sends_non_streaming_chat_and_parses_token_counts():
     result = ollama_with(handler).generate("SYSTEM", "USER")
     assert sent["path"] == "/api/chat"
     assert sent["stream"] is False and sent["options"]["temperature"] == 0
+    assert sent["think"] is False  # thinking off by default: ~40x faster on CPU
     assert result == Generation("Paris [1].", "llama3.2", 95, 6)
 
 
