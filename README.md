@@ -6,8 +6,10 @@ scratch (no LangChain): PyMuPDF extraction, overlapping chunking, local sentence
 embeddings, a FAISS index, and a grounded prompt that refuses when the answer isn't in the context.
 
 - **Local embeddings:** `all-MiniLM-L6-v2` (384-d) runs on CPU; no data leaves the machine until generation.
-- **Swappable LLM:** OpenAI or a local Ollama model, chosen with one env var.
-- **Measured:** a page-labeled eval set with recall@k and MRR, used to pick the chunk size.
+- **Swappable LLM:** OpenAI or a local Ollama model, chosen with one env var. Evaluated end to end
+  with `qwen3.5:4b` running locally on an 8 GB consumer GPU.
+- **Measured:** a page-labeled eval set with recall@k and MRR, used to pick the chunk size, plus a
+  generation eval (answer rate, citation accuracy, refusals) used to pick the local model.
 
 ## Architecture
 
@@ -41,6 +43,8 @@ flowchart LR
 
 ## Results
 
+### Retrieval
+
 Evaluated on the RAG paper itself ([Lewis et al., 2020](https://arxiv.org/abs/2005.11401), 19 pages)
 with 33 answerable questions labeled with the page(s) that contain the answer, plus 3
 unanswerable questions for refusal checks. Retrieval is exact (flat index), so runs are deterministic.
@@ -58,11 +62,40 @@ unanswerable questions for refusal checks. Retrieval is exact (flat index), so r
   the authors propose?" retrieved reference-list pages), and flattened results tables whose
   acronyms and digits overlap acronym-heavy questions ("DPR", "FEVER").
 
-| Latency (CPU laptop) | |
+### Generation: choosing a local model
+
+All 36 questions answered end to end (800/150 chunks, top 5 passages) by three local models
+served by Ollama on a Radeon RX 580 8 GB (Vulkan), with thinking mode off:
+
+| Model | Answered (33 answerable) | Citations on a labeled page | Unanswerable refused | Avg per answer |
+|---|---|---|---|---|
+| **`qwen3.5:4b`** (default) | 91% | **93%** | **3/3**, exact refusal sentence | 13.6 s |
+| `granite4.1:8b` | 91% | 93% | 3/3 | 15.3 s |
+| Community "uncensored" fine-tune of Qwen3.5-4B | 97% | 88% | 3/3, adds text after the refusal | 11.9 s |
+
+- **Two of `qwen3.5:4b`'s three refusals were correct:** for those questions retrieval never
+  surfaced the labeled page, so the model declined instead of answering from prior knowledge.
+- **Twice the parameters bought nothing measurable:** `granite4.1:8b` matched the 4B model on
+  every metric, was slower and wordier, and answered one question wrongly (it named MIPS, the
+  search problem, where the paper uses HNSW, the method) while citing the right page.
+- **That miss shows the metric's limit:** "answered with a correct citation" doesn't check the
+  answer itself. Grading answers against the reference answers in `questions.jsonl` is the next
+  eval to add.
+- **The uncensored fine-tune answered more often but cited the right page less often** and ignored
+  the exact-sentence format, consistent with tuning toward always responding. The gaps are one or
+  two questions, so this is suggestive, not proven.
+
+| Latency (Ryzen 5 5600X; LLM on RX 580 8 GB) | |
 |---|---|
 | Embedding model load (once, at startup) | ~5.7 s |
-| Retrieval per query (embed + search 121 vectors) | ~20 ms |
+| Retrieval per query (embed + search 121 vectors, CPU) | ~20 ms |
 | Ingest 19-page PDF (121 chunks) | ~3.1 s |
+| Answer generation, `qwen3.5:4b`, thinking off (average over 36 questions) | ~13.6 s |
+
+Thinking mode is Ollama's default for Qwen3.5 models. On one test question (with the Qwen3.5-4B
+fine-tune) it took 184 s and produced 2,045 output tokens, mostly hidden reasoning, versus 4.7 s
+and 28 tokens with thinking off, for an equally correct, equally cited answer. That's why
+`OLLAMA_THINK` defaults to `false`.
 
 Reproduce with `python -m eval.run_eval --configs 400:75 800:150 1200:225`. Add `--with-llm` to
 also answer every question with the configured LLM and report answer rate, whether citations hit a
@@ -97,8 +130,10 @@ Invoke-RestMethod -Method Post http://localhost:8001/query -ContentType applicat
 
 On macOS/Linux: `curl -X POST localhost:8001/query -H "Content-Type: application/json" -d '{"question": "Which retriever does RAG use?"}'`.
 
-To use a local model instead of OpenAI: install [Ollama](https://ollama.com), run
-`ollama pull llama3.2`, and set `LLM_PROVIDER=ollama` in `.env`.
+To use a local model instead of OpenAI (free, nothing leaves your machine): install
+[Ollama](https://ollama.com), run `ollama pull qwen3.5:4b` (3.3 GB), and set
+`LLM_PROVIDER=ollama` in `.env`. Keep `OLLAMA_THINK=false` unless you want the model's reasoning
+mode, which was about 40x slower on the same question in testing (see Results).
 
 Command-line tools (no server needed):
 
@@ -176,6 +211,12 @@ the official SDK; Ollama is called over plain HTTP (`/api/chat`) with `httpx`. B
 token usage and wrap their failures in one `GenerationError`, which the API maps to 502 with a
 generic message; details stay in the server log.
 
+**Local model chosen by eval, with thinking off.** Three Ollama models were compared on the
+same questions (see Results). The 4B official Qwen release matched an 8B model, followed the
+refusal format exactly, and fits easily in 8 GB of VRAM. Qwen3.5's thinking mode is off by default
+(`"think": false` in the request): for grounded QA the answer is either in the passages or it isn't,
+and the hidden reasoning cost about 40x latency on the same question without improving the answer.
+
 **Sync endpoints on purpose.** `/ingest` and `/query` are `def`, not `async def`: embedding is
 CPU-bound and the OpenAI SDK call is blocking, so FastAPI runs them in its thread pool and the
 event loop stays responsive. `/ingest` holds a lock so two rebuilds can't write the same files.
@@ -197,6 +238,8 @@ page text before running retrieval.
 - **API:** ingestion reads a server folder; a file-upload endpoint, authentication, streaming
   responses and incremental indexing are natural extensions.
 - **Eval:** 33 questions over one paper is enough to catch regressions, not to separate close configs.
+  The generation metrics check that the model answered and cited a labeled page, not that the
+  answer is correct; an LLM judge grading against the reference answers would close that gap.
 
 ## Project structure
 

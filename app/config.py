@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr | None = None
     openai_model: str = "gpt-4o-mini"
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "llama3.2"
+    ollama_model: str = "qwen3.5:4b"  # chosen by the generation eval (see README)
     # Thinking models (e.g. Qwen) reason before answering; on CPU that is ~40x slower.
     ollama_think: bool = False
     llm_timeout_seconds: float = 60.0
